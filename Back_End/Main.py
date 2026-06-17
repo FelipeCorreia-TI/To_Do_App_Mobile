@@ -17,7 +17,7 @@ class tarefas (db.Model): #Definição da tabela Tarefas no Server Side para gar
     id= db.Column(db.Integer,primary_key=True)
     titulo = db.Column(db.String(100))
     descricao = db.Column(db.Text)
-    checado = db.Column(db.String(1),default='N') 
+    checado = db.Column(db.String(0),default='0') 
 
 
 @app.route('/tarefas', methods=['GET'])  #Rota GET - [Pegar dados]
@@ -59,7 +59,7 @@ def atualizar(id):
 def deletar(id):
     tarefa = tarefas.query.get(id)
     db.session.delete(tarefa)
-    db.sessions.commit()
+    db.session.commit()
     return jsonify({"status":"Removido"})
 
 if __name__ == '__main__':
