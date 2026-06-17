@@ -5,7 +5,6 @@ create table tarefas (
     id int auto_increment primary key,
     tarefa varchar(500) not null,
     descricao text,
-    checado char not null default 'N',
+    checado boolean not null default '0',
 
-    constraint chk_checado check(checado in ('S','N'))
 );
