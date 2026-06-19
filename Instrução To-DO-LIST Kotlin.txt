@@ -1,0 +1,339 @@
+Para transformar o seu front-end (Android/Jetpack Compose) em um cidadão da web capaz de consumir a sua API Flask, precisamos instalar um "motor de rede" no seu projeto. A ferramenta padrão da indústria para isso se chama Retrofit.
+
+Vamos fazer essa transição em 3 passos práticos. Substituiremos a lógica local que criamos anteriormente por chamadas assíncronas de rede.
+
+Passo 1: Adicionar as Dependências e Permissões
+O Android, por padrão, vem com a internet totalmente bloqueada para os aplicativos (por motivos de segurança). Precisamos dar essa permissão ao seu app e instalar as bibliotecas de rede.
+
+1. No arquivo AndroidManifest.xml
+Abra o seu arquivo de manifesto (que fica na pasta app > manifests) e adicione essa linha logo acima da tag <application>:
+
+XML
+<uses-permission android:name="android.permission.INTERNET" />
+E dentro da tag <application>, adicione o atributo android:usesCleartextTraffic="true". Isso é necessário porque o seu servidor Flask local roda em http (sem segurança SSL) e o Android moderno bloqueia conexões inseguras por padrão:
+
+XML
+<application
+    ...
+    android:usesCleartextTraffic="true">
+2. No arquivo build.gradle.kts (Módulo: app)
+Adicione as seguintes linhas dentro do bloco dependencies { ... } para instalar o Retrofit e o conversor de JSON (Gson):
+
+Kotlin
+implementation("com.squareup.retrofit2:retrofit:2.9.0")
+implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+Após colar, clique em Sync Now no topo do Android Studio para baixar as bibliotecas.
+
+Passo 2: Criar a Ponte de Conexão (O Contrato da API)
+Agora vamos criar a estrutura de código que sabe como falar com o Flask. Vamos colocar isso tudo no topo ou junto do seu arquivo MainActivity.kt para simplificar.
+
+Precisamos mudar o modelo Tarefa para usar as anotações do Gson, garantindo que o Kotlin entenda as chaves JSON exatamente como você as definiu no Python (titulo, descricao, checado).
+
+Kotlin
+import com.google.gson.annotations.SerializedName
+import retrofit2.Response
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.*
+
+// 1. O Modelo de Dados espelhado com o Banco de Dados
+data class Tarefa(
+    @SerializedName("id") val id: Int = 0,
+    @SerializedName("titulo") val titulo: String,
+    @SerializedName("descricao") val descricao: String,
+    @SerializedName("checado") val concluida: Boolean = false // Mapeado para o seu 'checado' do Python
+)
+
+// 2. A Interface que mapeia as rotas do seu Flask
+interface ApiService {
+    @GET("/tarefas")
+    suspend fun buscarTarefas(): List<Tarefa>
+
+    @POST("/tarefas")
+    suspend fun criarTarefa(@Body tarefa: Tarefa): Response<Void>
+
+    @PUT("/tarefas/{id}")
+    suspend fun atualizarTarefa(@Path("id") id: Int, @Body tarefa: Tarefa): Response<Void>
+
+    @DELETE("/tarefas/{id}")
+    suspend fun deletarTarefa(@Path("id") id: Int): Response<Void>
+}
+
+// 3. O Cliente HTTP configurado
+object RetrofitClient {
+    // NOTA: '10.0.2.2' é o IP que o emulador do Android usa para acessar o 'localhost' do seu computador!
+    private const val BASE_URL = "http://10.0.2.2:5000" 
+
+    val api: ApiService by lazy {
+        Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(ApiService::class.java)
+    }
+}
+Passo 3: O Código do Front-end Conectado (Fullstack)
+Aqui está o seu arquivo MainActivity.kt completamente reformulado. Note que agora nós introduzimos o CoroutineScope. Como chamadas de internet podem demorar ou falhar, o Android nos obriga a rodar essas funções em segundo plano (em uma "Thread" paralela) para não travar a tela do usuário.
+
+Substitua o código do seu arquivo por este:
+
+Kotlin
+package com.example.todolist // ?? Mantenha o seu pacote original aqui
+
+import android.os.Bundle
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                TelaTodoApp()
+            }
+        }
+    }
+}
+
+@Composable
+fun TelaTodoApp() {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    
+    // O nosso estado agora começa vazio e vai receber os dados da API
+    val listaDeTarefas = remember { mutableStateListOf<Tarefa>() }
+    
+    var campoTitulo by remember { mutableStateOf("") }
+    var campoDescricao by remember { mutableStateOf("") }
+    var carregando by remember { mutableStateOf(false) }
+
+    // Função auxiliar para recarregar a lista direto do servidor Flask
+    fun atualizarListaDoServidor() {
+        coroutineScope.launch {
+            carregando = true
+            try {
+                val tarefasDoBanco = RetrofitClient.api.buscarTarefas()
+                listaDeTarefas.clear()
+                listaDeTarefas.addAll(tarefasDoBanco)
+            } catch (e: Exception) {
+                Toast.makeText(context, "Erro ao buscar dados: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            } finally {
+                carregando = false
+            }
+        }
+    }
+
+    // O LaunchedEffect roda automaticamente assim que a tela abre pela primeira vez (o "Start" do app)
+    LaunchedEffect(Unit) {
+        atualizarListaDoServidor()
+    }
+
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Text(text = "Meu To-Do List Cloud", style = MaterialTheme.typography.headlineMedium)
+        
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Formulário de Criação (POST)
+        Column(modifier = Modifier.fillMaxWidth()) {
+            OutlinedTextField(
+                value = campoTitulo,
+                onValueChange = { campoTitulo = it },
+                label = { Text("Título da tarefa...") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = campoDescricao,
+                    onValueChange = { campoDescricao = it },
+                    label = { Text("Descreva a tarefa...") },
+                    modifier = Modifier.weight(1f)
+                )
+                
+                Spacer(modifier = Modifier.width(8.dp))
+                
+                Button(
+                    enabled = !carregando,
+                    onClick = {
+                        if (campoTitulo.isNotBlank()) {
+                            coroutineScope.launch {
+                                try {
+                                    val novaTarefa = Tarefa(titulo = campoTitulo, descricao = campoDescricao)
+                                    RetrofitClient.api.criarTarefa(novaTarefa)
+                                    campoTitulo = ""
+                                    campoDescricao = ""
+                                    atualizarListaDoServidor() // Recarrega a tela com o dado novo do MySQL
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Erro ao salvar", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
+                ) {
+                    Text("Add")
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Se a rede estiver carregando, mostra uma barra de progresso rodando
+        if (carregando) {
+            CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+        }
+
+        // Lista de Itens vindo da API (READ)
+        LazyColumn(modifier = Modifier.fillMaxWidth()) {
+            items(listaDeTarefas.size) { index ->
+                val itemTarefa = listaDeTarefas[index]
+                
+                ItemTarefa(
+                    tarefa = itemTarefa,
+                    onStatusItemChange = {
+                        // GATILHO DO PUT (Inverte o status atual e manda pro Flask)
+                        coroutineScope.launch {
+                            try {
+                                val tarefaAtualizada = itemTarefa.copy(concluida = !itemTarefa.concluida)
+                                RetrofitClient.api.atualizarTarefa(itemTarefa.id, tarefaAtualizada)
+                                atualizarListaDoServidor() // Atualiza o front com o dado do banco
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Erro ao atualizar status", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    onDeletarClique = {
+                        // GATILHO DO DELETE
+                        coroutineScope.launch {
+                            try {
+                                RetrofitClient.api.deletarTarefa(itemTarefa.id)
+                                atualizarListaDoServidor()
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Erro ao deletar", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    onSalvarEdicao = { novoTitulo, novaDescricao ->
+                        // GATILHO DO PUT PARA EDIÇÃO DE TEXTO
+                        coroutineScope.launch {
+                            try {
+                                val tarefaEditada = itemTarefa.copy(titulo = novoTitulo, descricao = novaDescricao)
+                                RetrofitClient.api.atualizarTarefa(itemTarefa.id, tarefaEditada)
+                                atualizarListaDoServidor()
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Erro ao salvar edição", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ItemTarefa(
+    tarefa: Tarefa, 
+    onStatusItemChange: () -> Unit, 
+    onDeletarClique: () -> Unit,
+    onSalvarEdicao: (String, String) -> Unit
+) {
+    var expandido by remember { mutableStateOf(false) }
+    var emEdicao by remember { mutableStateOf(false) }
+    var textoTituloEdicao by remember { mutableStateOf(tarefa.titulo) }
+    var textoDescricaoEdicao by remember { mutableStateOf(tarefa.descricao) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+            .clickable { expandido = !expandido }
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(
+                    checked = tarefa.concluida, 
+                    onCheckedChange = { _ -> onStatusItemChange() }
+                )
+                
+                if (emEdicao) {
+                    OutlinedTextField(
+                        value = textoTituloEdicao,
+                        onValueChange = { textoTituloEdicao = it },
+                        modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                        label = { Text("Editar Título") }
+                    )
+                } else {
+                    Text(
+                        text = tarefa.titulo, 
+                        modifier = Modifier.weight(1f).padding(start = 8.dp),
+                        textDecoration = if (tarefa.concluida) TextDecoration.LineThrough else TextDecoration.None
+                    )
+                }
+
+                Button(onClick = onDeletarClique, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
+                    Text("Excluir")
+                }
+            }
+
+            if (expandido) {
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (emEdicao) {
+                    OutlinedTextField(
+                        value = textoDescricaoEdicao,
+                        onValueChange = { textoDescricaoEdicao = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Editar Descrição") }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            onSalvarEdicao(textoTituloEdicao, textoDescricaoEdicao)
+                            emEdicao = false
+                        },
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text("Salvar")
+                    }
+                } else {
+                    val textoExibido = if (tarefa.descricao.isNotBlank()) tarefa.descricao else "Descrição: (Vazio)"
+                    Text(text = textoExibido, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(onClick = { emEdicao = true }, modifier = Modifier.align(Alignment.End)) {
+                        Text("Editar")
+                    }
+                }
+            }
+        }
+    }
+}
+?? Como Testar Tudo Junto Agora:
+Inicie o MySQL: Garanta que seu banco local está ligado.
+
+Rode o Flask: Execute seu script Python. Ele deve mostrar no terminal que está rodando em http://127.0.0.1:5000 ou http://0.0.0.0:5000.
+
+Rode o App Android: Clique em Run no emulador.
+
+Ao abrir, se o banco tiver dados, o app vai rodar o GET e trazer os dados automaticamente na tela. Ao clicar no Checkbox, o app vai disparar a rota PUT que você criou no Python, alterando a coluna no banco de dados e riscando o nome da atividade na tela.
