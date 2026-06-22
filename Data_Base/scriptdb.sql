@@ -6,5 +6,4 @@ create table tarefas (
     titulo varchar(500) not null,
     descricao text,
    concluido boolean not null default FALSE
-
 );
