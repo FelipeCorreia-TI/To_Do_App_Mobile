@@ -158,7 +158,7 @@ fun TeladotodoApp(){
             items(listaDeTarefas.size){
                 index -> val itemTarefa = listaDeTarefas[index]
 
-                itemTarefa(
+                ItemTarefa(
                     tarefa = itemTarefa,
                     onStatusItemChange= {
                         coroutineScope.launch {
@@ -233,7 +233,7 @@ fun ItemTarefa(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Checkbox(
-                    checked = tarefa.concluido,
+                    checked = tarefa.concluida,
                     onCheckedChange =  { _ -> onStatusItemChange() }
                 )
 

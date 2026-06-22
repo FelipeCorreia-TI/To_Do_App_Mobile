@@ -5,6 +5,6 @@ create table tarefas (
     id int auto_increment primary key,
     titulo varchar(500) not null,
     descricao text,
-    checado boolean not null default FALSE
+   concluido boolean not null default FALSE
 
 );
