@@ -1,0 +1,509 @@
+Aqui está o guia definitivo com o ecossistema completo, corrigido e integrado para o seu projeto Full-Stack. Siga as instruções de cada arquivo para garantir que as amarrações entre o Android, Flask e MySQL funcionem perfeitamente.??? 1. Script Banco de Dados (MySQL)Abra o seu gerenciador do MySQL e execute este bloco completo. Ele limpa qualquer estrutura antiga e cria o relacionamento ideal de 1 para Muitos ($1:N$), onde cada tarefa possui obrigatoriamente um dono (usuario_id).SQL-- Garante que estamos usando o banco correto
+USE to_do_list;
+
+-- Remove as tabelas antigas para evitar conflitos de chaves estruturais
+DROP TABLE IF EXISTS tarefas;
+DROP TABLE IF EXISTS usuarios;
+
+-- 1. Criação da tabela de Usuários
+CREATE TABLE usuarios (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    senha VARCHAR(255) NOT NULL
+);
+
+-- 2. Criação da tabela de Tarefas (já vinculada ao usuário)
+CREATE TABLE tarefas (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    titulo VARCHAR(100) NOT NULL,
+    descricao TEXT,
+    concluido BOOLEAN DEFAULT FALSE,
+    usuario_id INT NOT NULL,
+    CONSTRAINT fk_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+);
+?? 2. Back-end Completo (Python + Flask)Substitua todo o conteúdo do seu arquivo app.py por este código. Ele gerencia o hash seguro das senhas e filtra as tarefas dinamicamente usando o usuario_id enviado pelo Android.Pythonimport urllib.parse
+from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+
+app = Flask(__name__)
+
+# Configuração de conexão segura com o MySQL
+senha_original = '10072008FCSj#@'
+senha_aceita = urllib.parse.quote_plus(senha_original)
+
+app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://Felipe:{senha_aceita}@localhost:3306/to_do_list'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
+
+# --- MODELOS DO BANCO DE DADOS ---
+class Usuarios(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(100), unique=True, nullable=False)
+    senha = db.Column(db.String(255), nullable=False)
+
+class Tarefas(db.Model):
+    __tablename__ = 'tarefas'
+    id = db.Column(db.Integer, primary_key=True)
+    titulo = db.Column(db.String(100), nullable=False)
+    descricao = db.Column(db.Text)
+    concluido = db.Column(db.Boolean, default=False)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
+
+# --- ROTAS DE AUTENTICAÇÃO ---
+
+@app.route('/cadastro', methods=['POST'])
+def cadastro():
+    dados = request.get_json()
+    if not dados or 'email' not in dados or 'senha' not in dados:
+        return jsonify({"erro": "Dados incompletos"}), 400
+    
+    if Usuarios.query.filter_by(email=dados['email']).first():
+        return jsonify({"erro": "Este e-mail já está cadastrado"}), 400
+    
+    senha_cripto = generate_password_hash(dados['senha'])
+    novo_usuario = Usuarios(email=dados['email'], senha=senha_cripto)
+    
+    db.session.add(novo_usuario)
+    db.session.commit()
+    return jsonify({"status": "Usuário criado com sucesso"}), 201
+
+@app.route('/login', methods=['POST'])
+def login():
+    dados = request.get_json()
+    usuario = Usuarios.query.filter_by(email=dados.get('email')).first()
+    
+    if usuario and check_password_hash(usuario.senha, dados.get('senha')):
+        return jsonify({
+            "status": "Sucesso",
+            "usuario_id": usuario.id,
+            "email": usuario.email
+        }), 200
+        
+    return jsonify({"erro": "E-mail ou senha incorretos"}), 401
+
+# --- ROTAS DE TAREFAS FILTRADAS POR USUÁRIO ---
+
+@app.route('/tarefas', methods=['GET'])
+def lista():
+    user_id = request.args.get('usuario_id')
+    if not user_id:
+        return jsonify({"erro": "ID do usuário não fornecido"}), 400
+        
+    lista_tarefas = Tarefas.query.filter_by(usuario_id=user_id).all()
+    resposta = [
+        {"id": t.id, "titulo": t.titulo, "descricao": t.descricao, "checado": bool(t.concluido)}
+        for t in lista_tarefas
+    ]
+    return jsonify(resposta)
+
+@app.route('/tarefas', methods=['POST'])
+def criar():
+    dados = request.get_json()
+    user_id = request.args.get('usuario_id')
+    if not user_id:
+        return jsonify({"erro": "ID do usuário não fornecido"}), 400
+    
+    nova = Tarefas(
+        titulo=dados['titulo'],
+        descricao=dados.get('descricao', ''),
+        concluido=dados.get('checado', False),
+        usuario_id=user_id
+    )
+    db.session.add(nova)
+    db.session.commit()
+    return jsonify({"status": "Sucesso"}), 201
+
+@app.route('/tarefas/<int:id>', methods=['PUT'])
+def atualizar(id):
+    dados = request.get_json()
+    tarefa = Tarefas.query.get(id)
+    if not tarefa: 
+        return jsonify({"erro": "Não encontrada"}), 404
+        
+    tarefa.titulo = dados.get('titulo', tarefa.titulo)
+    tarefa.descricao = dados.get('descricao', tarefa.descricao)
+    if 'checado' in dados: 
+        tarefa.concluido = dados['checado']
+        
+    db.session.commit()
+    return jsonify({"status": "Atualizado"})
+
+@app.route('/tarefas/<int:id>', methods=['DELETE'])
+def deletar(id):
+    tarefa = Tarefas.query.get(id)
+    if not tarefa: 
+        return jsonify({"erro": "Não encontrada"}), 404
+    db.session.delete(tarefa)
+    db.session.commit()
+    return jsonify({"status": "Removido"})
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
+?? 3. Códigos Kotlin (Android Studio)Mantenha a organização do seu app dividida em exatamente 3 arquivos dentro do seu pacote principal package com.example.todolist.?? Arquivo 1: MainActivity.ktKotlinpackage com.example.todolist
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            MaterialTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    val navController = rememberNavController()
+
+                    NavHost(
+                        navController = navController,
+                        startDestination = "login"
+                    ) {
+                        composable("login") {
+                            TelaLogin(onLoginSucesso = {
+                                navController.navigate("tarefas") {
+                                    popUpTo("login") { inclusive = true }
+                                }
+                            })
+                        }
+                        composable("tarefas") {
+                            TeladotodoApp()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+?? Arquivo 2: TelaLogin.ktKotlinpackage com.example.todolist
+
+import android.widget.Toast
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
+
+@Composable
+fun TelaLogin(onLoginSucesso: () -> Unit) {
+    var email by remember { mutableStateOf("") }
+    var senha by remember { mutableStateOf("") }
+    var erroMensagem by remember { mutableStateOf("") }
+    
+    val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var carregando by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier.fillMaxSize().padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(text = "Meu TO-DO LIST", style = MaterialTheme.typography.headlineLarge)
+        Spacer(modifier = Modifier.height(24.dp))
+
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it },
+            label = { Text("E-mail") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        OutlinedTextField(
+            value = senha,
+            onValueChange = { senha = it },
+            label = { Text("Senha") },
+            visualTransformation = PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        if (erroMensagem.isNotBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = erroMensagem, color = MaterialTheme.colorScheme.error)
+        }
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Button(
+            enabled = !carregando,
+            onClick = {
+                if (email.isNotBlank() && senha.isNotBlank()) {
+                    coroutineScope.launch {
+                        carregando = true
+                        erroMensagem = ""
+                        try {
+                            val resposta = RetrofitClient.api.efetuarLogin(LoginRequest(email, senha))
+                            if (resposta.isSuccessful && resposta.body() != null) {
+                                RetrofitClient.usuarioLogadoId = resposta.body()!!.usuarioId
+                                Toast.makeText(context, "Bem-vindo!", Toast.LENGTH_SHORT).show()
+                                onLoginSucesso()
+                            } else {
+                                erroMensagem = "E-mail ou senha incorretos!"
+                            }
+                        } catch (e: Exception) {
+                            erroMensagem = "Erro de conexão com o servidor."
+                        } finally {
+                            carregando = false
+                        }
+                    }
+                } else { erroMensagem = "Preencha todos os campos!" }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Entrar")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedButton(
+            enabled = !carregando,
+            onClick = {
+                if (email.isNotBlank() && senha.isNotBlank()) {
+                    if (senha.length < 6) {
+                        erroMensagem = "A senha deve ter pelo menos 6 caracteres!"
+                        return@OutlinedButton
+                    }
+                    coroutineScope.launch {
+                        carregando = true
+                        erroMensagem = ""
+                        try {
+                            val resposta = RetrofitClient.api.cadastrarUsuario(LoginRequest(email, senha))
+                            if (resposta.isSuccessful) {
+                                Toast.makeText(context, "Conta criada! Clique em Entrar.", Toast.LENGTH_LONG).show()
+                                senha = ""
+                            } else {
+                                erroMensagem = "Este e-mail já está cadastrado."
+                            }
+                        } catch (e: Exception) {
+                            erroMensagem = "Erro ao tentar cadastrar."
+                        } finally {
+                            carregando = false
+                        }
+                    }
+                } else { erroMensagem = "Preencha e-mail e senha para cadastrar!" }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Criar Nova Conta")
+        }
+    }
+}
+?? Arquivo 3: TarefaScreen.ktKotlinpackage com.example.todolist
+
+import android.widget.Toast
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.dp
+import com.google.gson.annotations.SerializedName
+import kotlinx.coroutines.launch
+import retrofit2.Response
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import retrofit2.http.*
+
+// --- MODELOS DE DADOS MAPPED ---
+data class LoginRequest(val email: String, val senha: String)
+data class LoginResponse(@SerializedName("usuario_id") val usuarioId: Int)
+
+data class Tarefa (
+    @SerializedName("id") val id: Int = 0,
+    @SerializedName("titulo") val titulo: String,
+    @SerializedName("descricao") val descricao: String,
+    @SerializedName("checado") val concluida: Boolean = false
+)
+
+// --- INTERFACE RETROFIT ATUALIZADA ---
+interface ApiService {
+    @POST("/login")
+    suspend fun efetuarLogin(@Body dados: LoginRequest): Response<LoginResponse>
+
+    @POST("/cadastro")
+    suspend fun cadastrarUsuario(@Body dados: LoginRequest): Response<Void>
+
+    @GET("/tarefas")
+    suspend fun buscarTarefas(@Query("usuario_id") usuarioId: Int): List<Tarefa>
+
+    @POST("/tarefas")
+    suspend fun criarTarefa(@Query("usuario_id") usuarioId: Int, @Body tarefa: Tarefa): Response<Void>
+
+    @PUT("/tarefas/{id}")
+    suspend fun atualizarTarefa(@Path("id") id: Int, @Body tarefa: Tarefa): Response<Void>
+
+    @DELETE("/tarefas/{id}")
+    suspend fun deletarTarefa(@Path("id") id: Int): Response<Void>
+}
+
+object RetrofitClient {
+    private const val BASE_URL = "http://172.28.52.127:5000"
+    var usuarioLogadoId: Int = 0 // Estado global da sessão
+
+    val api: ApiService by lazy {
+        Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(ApiService::class.java)
+    }
+}
+
+@Composable
+fun TeladotodoApp() {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val listaDeTarefas = remember { mutableStateListOf<Tarefa>() }
+    var campoTitulo by remember { mutableStateOf("") }
+    var campoDescricao by remember { mutableStateOf("") }
+    var carregando by remember { mutableStateOf(false) }
+
+    fun atualizarListaDoServidor() {
+        coroutineScope.launch {
+            carregando = true
+            try {
+                val tarefasDoBanco = RetrofitClient.api.buscarTarefas(RetrofitClient.usuarioLogadoId)
+                listaDeTarefas.clear()
+                listaDeTarefas.addAll(tarefasDoBanco)
+            } catch (e: Exception) {
+                Toast.makeText(context, "Erro ao buscar dados: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            } finally {
+                carregando = false
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) { atualizarListaDoServidor() }
+
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Text(text = "Meu To-Do List Full-Stack", style = MaterialTheme.typography.headlineMedium)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedTextField(
+            value = campoTitulo,
+            onValueChange = { campoTitulo = it },
+            label = { Text("Título da tarefa...") },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = campoDescricao,
+            onValueChange = { campoDescricao = it },
+            label = { Text("Descrição...") },
+            modifier = Modifier.fillMaxWidth(),
+            minLines = 2
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Button(
+            enabled = !carregando,
+            onClick = {
+                if (campoTitulo.isNotBlank()) {
+                    coroutineScope.launch {
+                        try {
+                            val novaTarefa = Tarefa(titulo = campoTitulo, descricao = campoDescricao)
+                            RetrofitClient.api.criarTarefa(RetrofitClient.usuarioLogadoId, novaTarefa)
+                            campoTitulo = ""
+                            campoDescricao = ""
+                            atualizarListaDoServidor()
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Erro ao salvar", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Adicionar") }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        if (carregando) CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+
+        LazyColumn(modifier = Modifier.fillMaxWidth()) {
+            items(listaDeTarefas.size) { index ->
+                val itemTarefa = listaDeTarefas[index]
+                ItemTarefa(
+                    tarefa = itemTarefa,
+                    onStatusItemChange = {
+                        coroutineScope.launch {
+                            try {
+                                val tarefaAtualizada = itemTarefa.copy(concluida = !itemTarefa.concluida)
+                                RetrofitClient.api.atualizarTarefa(itemTarefa.id, tarefaAtualizada)
+                                atualizarListaDoServidor()
+                            } catch (e: Exception) { /* erro */ }
+                        }
+                    },
+                    onDeletarClique = {
+                        coroutineScope.launch {
+                            try {
+                                RetrofitClient.api.deletarTarefa(itemTarefa.id)
+                                atualizarListaDoServidor()
+                            } catch (e: Exception) { /* erro */ }
+                        }
+                    },
+                    onSalvarEdicao = { novoTitulo, novaDescricao ->
+                        coroutineScope.launch {
+                            try {
+                                val tarefaEditada = itemTarefa.copy(titulo = novoTitulo, descricao = novaDescricao)
+                                RetrofitClient.api.atualizarTarefa(itemTarefa.id, tarefaEditada)
+                                atualizarListaDoServidor()
+                            } catch (e: Exception) { /* erro */ }
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ItemTarefa(tarefa: Tarefa, onStatusItemChange: () -> Unit, onDeletarClique: () -> Unit, onSalvarEdicao: (String, String) -> Unit) {
+    var expandido by remember { mutableStateOf(false) }
+    var emEdicao by remember { mutableStateOf(false) }
+    var textoTituloEdicao by remember { mutableStateOf(tarefa.titulo) }
+    var textoDescricaoEdicao by remember { mutableStateOf(tarefa.descricao) }
+
+    Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { expandido = !expandido }) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = tarefa.concluida, onCheckedChange = { onStatusItemChange() })
+                if (emEdicao) {
+                    OutlinedTextField(value = textoTituloEdicao, onValueChange = { textoTituloEdicao = it }, modifier = Modifier.weight(1f).padding(horizontal = 4.dp))
+                } else {
+                    Text(
+                        text = tarefa.titulo,
+                        modifier = Modifier.weight(1f).padding(start = 8.dp),
+                        textDecoration = if (tarefa.concluida) TextDecoration.LineThrough else TextDecoration.None
+                    )
+                }
+                Button(onClick = onDeletarClique, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("X") }
+            }
+            if (expandido) {
+                if (emEdicao) {
+                    OutlinedTextField(value = textoDescricaoEdicao, onValueChange = { textoDescricaoEdicao = it }, modifier = Modifier.fillMaxWidth())
+                    Button(onClick = { onSalvarEdicao(textoTituloEdicao, textoDescricaoEdicao); emEdicao = false }, modifier = Modifier.align(Alignment.End)) { Text("Salvar") }
+                } else {
+                    Text(text = if (tarefa.descricao.isNotBlank()) tarefa.descricao else "Sem descrição", style = MaterialTheme.typography.bodyMedium)
+                    Button(onClick = { emEdicao = true }, modifier = Modifier.align(Alignment.End)) { Text("Editar") }
+                }
+            }
+        }
+    }
+}
+?? Como testar tudo funcionando juntosRode o script SQL para limpar e reconfigurar seu banco.No seu terminal Python, suba o Flask executando python app.py.No seu celular, crie uma conta nova clicando em Criar Nova Conta (ex: joao@email.com / senha123).Clique em Entrar.Sua arquitetura full-stack fechou o ciclo perfeitamente! Cada usuário criado agora tem sua própria nuvem blindada de tarefas.

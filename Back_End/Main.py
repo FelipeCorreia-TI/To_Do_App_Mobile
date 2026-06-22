@@ -8,7 +8,7 @@ senha_original ='10072008FCSj#@'
 
 senha_aceita= urllib.parse.quote_plus(senha_original) #Embaralhamos a senha e tornamo-a compreensível para o sistema já que a anterior havia # e @
 
-app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://Felipe:{senha_aceita}@127.0.0.1:3306/to_do_list' #Conexão database
+app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://Felipe:{senha_aceita}@localhost:3306/to_do_list' #Conexão database #Esse campo deve mudar de acordo com a configuração da database local mysql
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False #Boa prática que ajuda a liberar recurso desncessário durante as requisições do banco
 db = SQLAlchemy(app)
@@ -17,13 +17,18 @@ class tarefas (db.Model): #Definição da tabela Tarefas no Server Side para gar
     id= db.Column(db.Integer,primary_key=True)
     titulo = db.Column(db.String(100))
     descricao = db.Column(db.Text)
-    checado = db.Column(db.String(0),default='0') 
+    concluido = db.Column(db.Boolean,default = False) 
 
 
 @app.route('/tarefas', methods=['GET'])  #Rota GET - [Pegar dados]
 def lista():
     tarefa = tarefas.query.all() #ORM facilitando com uma query 'automática'
-    lista =[{"id":t.id,"titulo":t.titulo,"descricao":t.descricao,"checado":t.checado} for t in tarefa] #Percorre todos as colunas da tabela e atribui cada uma a um registro único 
+    lista =[
+        {"id":t.id,
+         "titulo":t.titulo,
+         "descricao":t.descricao,
+         "concluido":bool(t.concluido)} 
+        for t in tarefa] #Percorre todos as colunas da tabela e atribui cada uma a um registro único 
     return jsonify(lista) #Torna-se JSON para facilitar a comunicação Server <-> Back <-> Front
 
 @app.route('/tarefas',methods=['POST']) #Rota POST - [Para 'postar' os novos registros]
@@ -50,7 +55,7 @@ def atualizar(id):
 
     tarefa.titulo = dados.get('titulo', tarefa.titulo)
     tarefa.descricao = dados.get('descricao', tarefa.descricao)
-    tarefa.checado = dados.get('checado',tarefa.checado)
+    tarefa.concluido = dados.get('concluido',tarefa.concluido)
 
     db.session.commit()
     return jsonify({"status":"atualizado"})
@@ -63,4 +68,4 @@ def deletar(id):
     return jsonify({"status":"Removido"})
 
 if __name__ == '__main__':
-    app.run(debug=True,host='0.0.0.0')
+    app.run(debug=True,host='0.0.0.0', port=5000)
