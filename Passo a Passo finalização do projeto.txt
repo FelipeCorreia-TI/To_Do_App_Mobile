@@ -1,147 +1,3 @@
-Aqui está o guia definitivo com o ecossistema completo, corrigido e integrado para o seu projeto Full-Stack. Siga as instruções de cada arquivo para garantir que as amarrações entre o Android, Flask e MySQL funcionem perfeitamente.??? 1. Script Banco de Dados (MySQL)Abra o seu gerenciador do MySQL e execute este bloco completo. Ele limpa qualquer estrutura antiga e cria o relacionamento ideal de 1 para Muitos ($1:N$), onde cada tarefa possui obrigatoriamente um dono (usuario_id).SQL-- Garante que estamos usando o banco correto
-USE to_do_list;
-
--- Remove as tabelas antigas para evitar conflitos de chaves estruturais
-DROP TABLE IF EXISTS tarefas;
-DROP TABLE IF EXISTS usuarios;
-
--- 1. Criação da tabela de Usuários
-CREATE TABLE usuarios (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    senha VARCHAR(255) NOT NULL
-);
-
--- 2. Criação da tabela de Tarefas (já vinculada ao usuário)
-CREATE TABLE tarefas (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    titulo VARCHAR(100) NOT NULL,
-    descricao TEXT,
-    concluido BOOLEAN DEFAULT FALSE,
-    usuario_id INT NOT NULL,
-    CONSTRAINT fk_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
-);
-?? 2. Back-end Completo (Python + Flask)Substitua todo o conteúdo do seu arquivo app.py por este código. Ele gerencia o hash seguro das senhas e filtra as tarefas dinamicamente usando o usuario_id enviado pelo Android.Pythonimport urllib.parse
-from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
-from werkzeug.security import generate_password_hash, check_password_hash
-
-app = Flask(__name__)
-
-# Configuração de conexão segura com o MySQL
-senha_original = '10072008FCSj#@'
-senha_aceita = urllib.parse.quote_plus(senha_original)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://Felipe:{senha_aceita}@localhost:3306/to_do_list'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
-
-# --- MODELOS DO BANCO DE DADOS ---
-class Usuarios(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(100), unique=True, nullable=False)
-    senha = db.Column(db.String(255), nullable=False)
-
-class Tarefas(db.Model):
-    __tablename__ = 'tarefas'
-    id = db.Column(db.Integer, primary_key=True)
-    titulo = db.Column(db.String(100), nullable=False)
-    descricao = db.Column(db.Text)
-    concluido = db.Column(db.Boolean, default=False)
-    usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=False)
-
-# --- ROTAS DE AUTENTICAÇÃO ---
-
-@app.route('/cadastro', methods=['POST'])
-def cadastro():
-    dados = request.get_json()
-    if not dados or 'email' not in dados or 'senha' not in dados:
-        return jsonify({"erro": "Dados incompletos"}), 400
-    
-    if Usuarios.query.filter_by(email=dados['email']).first():
-        return jsonify({"erro": "Este e-mail já está cadastrado"}), 400
-    
-    senha_cripto = generate_password_hash(dados['senha'])
-    novo_usuario = Usuarios(email=dados['email'], senha=senha_cripto)
-    
-    db.session.add(novo_usuario)
-    db.session.commit()
-    return jsonify({"status": "Usuário criado com sucesso"}), 201
-
-@app.route('/login', methods=['POST'])
-def login():
-    dados = request.get_json()
-    usuario = Usuarios.query.filter_by(email=dados.get('email')).first()
-    
-    if usuario and check_password_hash(usuario.senha, dados.get('senha')):
-        return jsonify({
-            "status": "Sucesso",
-            "usuario_id": usuario.id,
-            "email": usuario.email
-        }), 200
-        
-    return jsonify({"erro": "E-mail ou senha incorretos"}), 401
-
-# --- ROTAS DE TAREFAS FILTRADAS POR USUÁRIO ---
-
-@app.route('/tarefas', methods=['GET'])
-def lista():
-    user_id = request.args.get('usuario_id')
-    if not user_id:
-        return jsonify({"erro": "ID do usuário não fornecido"}), 400
-        
-    lista_tarefas = Tarefas.query.filter_by(usuario_id=user_id).all()
-    resposta = [
-        {"id": t.id, "titulo": t.titulo, "descricao": t.descricao, "checado": bool(t.concluido)}
-        for t in lista_tarefas
-    ]
-    return jsonify(resposta)
-
-@app.route('/tarefas', methods=['POST'])
-def criar():
-    dados = request.get_json()
-    user_id = request.args.get('usuario_id')
-    if not user_id:
-        return jsonify({"erro": "ID do usuário não fornecido"}), 400
-    
-    nova = Tarefas(
-        titulo=dados['titulo'],
-        descricao=dados.get('descricao', ''),
-        concluido=dados.get('checado', False),
-        usuario_id=user_id
-    )
-    db.session.add(nova)
-    db.session.commit()
-    return jsonify({"status": "Sucesso"}), 201
-
-@app.route('/tarefas/<int:id>', methods=['PUT'])
-def atualizar(id):
-    dados = request.get_json()
-    tarefa = Tarefas.query.get(id)
-    if not tarefa: 
-        return jsonify({"erro": "Não encontrada"}), 404
-        
-    tarefa.titulo = dados.get('titulo', tarefa.titulo)
-    tarefa.descricao = dados.get('descricao', tarefa.descricao)
-    if 'checado' in dados: 
-        tarefa.concluido = dados['checado']
-        
-    db.session.commit()
-    return jsonify({"status": "Atualizado"})
-
-@app.route('/tarefas/<int:id>', methods=['DELETE'])
-def deletar(id):
-    tarefa = Tarefas.query.get(id)
-    if not tarefa: 
-        return jsonify({"erro": "Não encontrada"}), 404
-    db.session.delete(tarefa)
-    db.session.commit()
-    return jsonify({"status": "Removido"})
-
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
-?? 3. Códigos Kotlin (Android Studio)Mantenha a organização do seu app dividida em exatamente 3 arquivos dentro do seu pacote principal package com.example.todolist.?? Arquivo 1: MainActivity.ktKotlinpackage com.example.todolist
-
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -254,7 +110,7 @@ fun TelaLogin(onLoginSucesso: () -> Unit) {
                                 erroMensagem = "E-mail ou senha incorretos!"
                             }
                         } catch (e: Exception) {
-                            erroMensagem = "Erro de conexão com o servidor."
+                            erroMensagem = "Erro de conexï¿½o com o servidor."
                         } finally {
                             carregando = false
                         }
@@ -285,7 +141,7 @@ fun TelaLogin(onLoginSucesso: () -> Unit) {
                                 Toast.makeText(context, "Conta criada! Clique em Entrar.", Toast.LENGTH_LONG).show()
                                 senha = ""
                             } else {
-                                erroMensagem = "Este e-mail já está cadastrado."
+                                erroMensagem = "Este e-mail jï¿½ estï¿½ cadastrado."
                             }
                         } catch (e: Exception) {
                             erroMensagem = "Erro ao tentar cadastrar."
@@ -355,7 +211,7 @@ interface ApiService {
 
 object RetrofitClient {
     private const val BASE_URL = "http://172.28.52.127:5000"
-    var usuarioLogadoId: Int = 0 // Estado global da sessão
+    var usuarioLogadoId: Int = 0 // Estado global da sessï¿½o
 
     val api: ApiService by lazy {
         Retrofit.Builder()
@@ -399,14 +255,14 @@ fun TeladotodoApp() {
         OutlinedTextField(
             value = campoTitulo,
             onValueChange = { campoTitulo = it },
-            label = { Text("Título da tarefa...") },
+            label = { Text("Tï¿½tulo da tarefa...") },
             modifier = Modifier.fillMaxWidth()
         )
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(
             value = campoDescricao,
             onValueChange = { campoDescricao = it },
-            label = { Text("Descrição...") },
+            label = { Text("Descriï¿½ï¿½o...") },
             modifier = Modifier.fillMaxWidth(),
             minLines = 2
         )
@@ -499,11 +355,11 @@ fun ItemTarefa(tarefa: Tarefa, onStatusItemChange: () -> Unit, onDeletarClique: 
                     OutlinedTextField(value = textoDescricaoEdicao, onValueChange = { textoDescricaoEdicao = it }, modifier = Modifier.fillMaxWidth())
                     Button(onClick = { onSalvarEdicao(textoTituloEdicao, textoDescricaoEdicao); emEdicao = false }, modifier = Modifier.align(Alignment.End)) { Text("Salvar") }
                 } else {
-                    Text(text = if (tarefa.descricao.isNotBlank()) tarefa.descricao else "Sem descrição", style = MaterialTheme.typography.bodyMedium)
+                    Text(text = if (tarefa.descricao.isNotBlank()) tarefa.descricao else "Sem descriï¿½ï¿½o", style = MaterialTheme.typography.bodyMedium)
                     Button(onClick = { emEdicao = true }, modifier = Modifier.align(Alignment.End)) { Text("Editar") }
                 }
             }
         }
     }
 }
-?? Como testar tudo funcionando juntosRode o script SQL para limpar e reconfigurar seu banco.No seu terminal Python, suba o Flask executando python app.py.No seu celular, crie uma conta nova clicando em Criar Nova Conta (ex: joao@email.com / senha123).Clique em Entrar.Sua arquitetura full-stack fechou o ciclo perfeitamente! Cada usuário criado agora tem sua própria nuvem blindada de tarefas.
+?? Como testar tudo funcionando juntosRode o script SQL para limpar e reconfigurar seu banco.No seu terminal Python, suba o Flask executando python app.py.No seu celular, crie uma conta nova clicando em Criar Nova Conta (ex: joao@email.com / senha123).Clique em Entrar.Sua arquitetura full-stack fechou o ciclo perfeitamente! Cada usuï¿½rio criado agora tem sua prï¿½pria nuvem blindada de tarefas.
