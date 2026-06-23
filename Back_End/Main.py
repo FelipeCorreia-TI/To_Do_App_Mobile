@@ -5,11 +5,11 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__) #Inicia o APP/SERVER
 
-senha_original ='@Mello2026'
+senha_original ='10072008FCSj#@' #senha_original ='@Mello2026'
 
 senha_aceita= urllib.parse.quote_plus(senha_original) #Embaralhamos a senha e tornamo-a compreensível para o sistema já que a anterior havia # e @
 
-app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://root:{senha_aceita}@localhost:3306/to_do_list' #Conexão database #Esse campo deve mudar de acordo com a configuração da database local mysql
+app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://Felipe:{senha_aceita}@localhost:3306/to_do_list' #Conexão database #Esse campo deve mudar de acordo com a configuração da database local mysql #f'mysql+pymysql://root:{senha_aceita}@localhost:3306/to_do_list'
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False #Boa prática que ajuda a liberar recurso desncessário durante as requisições do banco
 db = SQLAlchemy(app)
@@ -57,13 +57,20 @@ def login():
     return jsonify ({"erro":"E-mail ou senha incorretas"}),401
 @app.route('/tarefas', methods=['GET'])  #Rota GET - [Pegar dados]
 def lista():
-    tarefa = tarefas.query.all() #ORM facilitando com uma query 'automática'
+    user_id = request.args.get("usuario_id")
+
+    if not user_id:
+        return jsonify({"erro":"ID do usuário não fornecido"}),400
+
+    lista_tarefa = tarefas.query.filter_by(usuario_id=user_id).all()
+
+     #ORM facilitando com uma query 'automática'
     lista =[
         {"id":t.id,
          "titulo":t.titulo,
          "descricao":t.descricao,
          "concluido":bool(t.concluido)} 
-        for t in tarefa] #Percorre todos as colunas da tabela e atribui cada uma a um registro único 
+        for t in lista_tarefa] #Percorre todos as colunas da tabela e atribui cada uma a um registro único 
     return jsonify(lista) #Torna-se JSON para facilitar a comunicação Server <-> Back <-> Front
 
 @app.route('/tarefas',methods=['POST']) #Rota POST - [Para 'postar' os novos registros]
@@ -71,11 +78,13 @@ def criar():
 
     dados = request.get_json(silent=True) 
      # Se 'dados' for nulo ou não for um dicionário, retorna um aviso amigável
+
+    user_id= dados['usuario_id']
     if not dados or not isinstance(dados, dict):
         return jsonify({"erro": "O corpo da requisição precisa ser um JSON válido e conter o cabeçalho 'Content-Type: application/json'"}), 400
     
     dados = request.get_json() #Requisita o JSON para ter a estrutura e colocar os novos registros nas colunas sem que haja incoerências
-    nova = tarefas(titulo=dados['titulo'],descricao=dados['descricao']) #Variável que através da DataClass lá de cima adiciona os novos registros dentro de variáveis que irão adicionar algum registro.
+    nova = tarefas(titulo=dados['titulo'],descricao=dados.get('descricao',''),concluido=dados.get('concluido',False),usuario_id= user_id) #Variável que através da DataClass lá de cima adiciona os novos registros dentro de variáveis que irão adicionar algum registro.
     db.session.add(nova) #faz o INSERT
     db.session.commit() #Commita a alteração
     return jsonify({"status":"Sucesso"}),201 #Retornará um status positivo, significa que foram adicionados | 200 - bateu e voltou as respostas | 201 - bateu e adicionou | 4xx - Erro |
