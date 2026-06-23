@@ -17,23 +17,40 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
 import android.widget.Toast
+import androidx.compose.ui.focus.focusModifier
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.launch
+
+
+
+
+
+data class  LoginRequest(val email: String, val senha:String)
+data class LoginResponse(@SerializedName("usuario_id") val usuarioId: Int)
 
 data class Tarefa (
     @SerializedName("id") val id: Int = 0,
     @SerializedName("titulo") val titulo: String,
     @SerializedName("descricao") val descricao: String,
-    @SerializedName("concluido") val concluida: Boolean = false
+    @SerializedName("concluido") val concluida: Boolean = false,
+    @SerializedName("usuario_id") val usuarioId: Int? = null
 )
 
 interface ApiService{
+    @POST("/login")
+    suspend fun efetuarLogin(@Body dados: LoginRequest):
+            Response<LoginResponse>
+
+    @POST("/cadastro")
+    suspend fun cadastrarUsuario(@Body dados: LoginRequest):
+            Response<Void>
+
     @GET("/tarefas")
-    suspend fun buscarTarefas(): List<Tarefa>
+    suspend fun buscarTarefas(@Query("usuario_id") usuarioId: Int): List<Tarefa>
 
     @POST("/tarefas")
-    suspend fun criarTarefa(@Body tarefa:Tarefa):
-            Response<Void>
+    suspend fun criarTarefa(@Body tarefa:Tarefa): Response<Void>
+
 
     @PUT("/tarefas/{id}")
     suspend fun atualizarTarefa(@Path("id") id:Int,@Body tarefa:Tarefa): Response<Void>
@@ -43,7 +60,8 @@ interface ApiService{
 }
 
 object RetrofitClient{
-    private const val BASE_URL = "http://172.28.52.127:5000" //http://10.0.2.2:5000
+    private const val BASE_URL = "http://172.28.52.127:5000"//A conexão atual é a da rede roteada 4g Minha //http://10.0.2.2:5000
+    var usuarioLogadoId: Int = 0
 
     val api: ApiService by lazy{
         Retrofit.Builder()
@@ -72,7 +90,7 @@ fun TeladotodoApp(){
         coroutineScope.launch{
             carregando = true
             try{
-                val tarefasDoBanco = RetrofitClient.api.buscarTarefas()
+                val tarefasDoBanco = RetrofitClient.api.buscarTarefas(RetrofitClient.usuarioLogadoId)
                 listaDeTarefas.clear()
 
                 listaDeTarefas.addAll(tarefasDoBanco)
@@ -115,6 +133,7 @@ fun TeladotodoApp(){
                 minLines = 3,
                 maxLines = 5
             )
+            Spacer(modifier = Modifier.width(8.dp))
 
             Button(
                 enabled= !carregando,
@@ -122,7 +141,7 @@ fun TeladotodoApp(){
                     if (campoTitulo.isNotBlank()){
                         coroutineScope.launch {
                             try{
-                                val novaTarefa = Tarefa(titulo = campoTitulo, descricao = campoDescricao)
+                                val novaTarefa = Tarefa(titulo = campoTitulo, descricao = campoDescricao,usuarioId= RetrofitClient.usuarioLogadoId)
 
                                 RetrofitClient.api.criarTarefa(novaTarefa)
                                 campoTitulo = ""
