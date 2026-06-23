@@ -1,25 +1,60 @@
 import urllib.parse
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy #Optamos por utilizar um ORM que facilita muito a criação de rotas
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__) #Inicia o APP/SERVER
 
-senha_original ='10072008FCSj#@'
+senha_original ='@Mello2026'
 
 senha_aceita= urllib.parse.quote_plus(senha_original) #Embaralhamos a senha e tornamo-a compreensível para o sistema já que a anterior havia # e @
 
-app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://Felipe:{senha_aceita}@localhost:3306/to_do_list' #Conexão database #Esse campo deve mudar de acordo com a configuração da database local mysql
+app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://root:{senha_aceita}@localhost:3306/to_do_list' #Conexão database #Esse campo deve mudar de acordo com a configuração da database local mysql
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False #Boa prática que ajuda a liberar recurso desncessário durante as requisições do banco
 db = SQLAlchemy(app)
 
+class usuarios(db.Model):
+    id= db.Column(db.Integer,primary_key=True)
+    email = db.Column(db.String(100), unique = True,nullable=False)
+    senha = db.Column(db.String(255),nullable=False)
+
 class tarefas (db.Model): #Definição da tabela Tarefas no Server Side para garantir a conformidade dos dados
     id= db.Column(db.Integer,primary_key=True)
-    titulo = db.Column(db.String(100))
+    titulo = db.Column(db.String(100),nullable=False)
     descricao = db.Column(db.Text)
     concluido = db.Column(db.Boolean,default = False) 
+    usuario_id = db.Column(db.Integer,db.ForeignKey('usuarios.id'),nullable=False)
 
+@app.route('/cadastro',methods=['POST'])
+def cadastro():
+    dados= request.get_json()
+    if not dados or 'email' not in dados or 'senha' not in dados:
+        return jsonify({"erro":"Dados incompletos"}),400
+    
+    if usuarios.query.filter_by(email=dados['email']).first():
+        return jsonify({"erro":"Este e-mail já está cadastrado"}),400
+    
+    senha_cripto = generate_password_hash(dados['senha'])
+    novo_usuario = usuarios(email=dados['email'],senha=senha_cripto)
 
+    db.session.add(novo_usuario)
+    db.session.commit()
+    return jsonify({"status":"Usuário criado com sucesso"}),201
+
+@app.route('/login',methods=['POST'])
+def login():
+    dados = request.get_json()
+    usuario = usuarios.query.filter_by(email=dados.get('email')).first()
+
+    if usuario and check_password_hash(usuario.senha,dados.get('senha')):
+        return jsonify({
+            "status":"Sucesso",
+            "usuario_id":usuario.id,
+            "email":usuario.email
+        }),200
+    
+    return jsonify ({"erro":"E-mail ou senha incorretas"}),401
 @app.route('/tarefas', methods=['GET'])  #Rota GET - [Pegar dados]
 def lista():
     tarefa = tarefas.query.all() #ORM facilitando com uma query 'automática'
