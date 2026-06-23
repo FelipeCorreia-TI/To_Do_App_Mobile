@@ -5,11 +5,11 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__) #Inicia o APP/SERVER
 
-senha_original ='10072008FCSj#@' #senha_original ='@Mello2026'
+senha_original ='@Mello2026' #senha_original ='@Mello2026'
 
 senha_aceita= urllib.parse.quote_plus(senha_original) #Embaralhamos a senha e tornamo-a compreensível para o sistema já que a anterior havia # e @
 
-app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://Felipe:{senha_aceita}@localhost:3306/to_do_list' #Conexão database #Esse campo deve mudar de acordo com a configuração da database local mysql #f'mysql+pymysql://root:{senha_aceita}@localhost:3306/to_do_list'
+app.config['SQLALCHEMY_DATABASE_URI'] = f'mysql+pymysql://root:{senha_aceita}@localhost:3306/to_do_list' #Conexão database #Esse campo deve mudar de acordo com a configuração da database local mysql #f'mysql+pymysql://root:{senha_aceita}@localhost:3306/to_do_list'
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False #Boa prática que ajuda a liberar recurso desncessário durante as requisições do banco
 db = SQLAlchemy(app)

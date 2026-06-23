@@ -72,7 +72,7 @@ fun TelaLogin(onLoginSucesso:() -> Unit ){
                                 Toast.makeText(context,"Bem-Vindo!", Toast.LENGTH_SHORT).show()
                                 onLoginSucesso()
                         } else{
-                            erroMensagem = "E-mail ou senha incorretos!"
+                            erroMensagem = "E-mail ou Senha não cadastrado!"
                         }
                     } catch (e: Exception){
                         erroMensagem = "Erro de conexão com o servidor."

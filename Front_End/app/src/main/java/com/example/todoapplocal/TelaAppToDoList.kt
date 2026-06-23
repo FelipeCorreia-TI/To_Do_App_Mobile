@@ -60,7 +60,7 @@ interface ApiService{
 }
 
 object RetrofitClient{
-    private const val BASE_URL = "http://172.28.52.127:5000"//A conexão atual é a da rede roteada 4g Minha //http://10.0.2.2:5000
+    private const val BASE_URL = "http://10.0.2.2:5000"//A conexão atual é a da rede roteada 4g Minha //http://10.0.2.2:5000
     var usuarioLogadoId: Int = 0
 
     val api: ApiService by lazy{
