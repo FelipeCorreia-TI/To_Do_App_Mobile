@@ -1,5 +1,4 @@
-create database to_do_list;
-use to_do_list;
+
 
 CREATE TABLE tarefas (
     id INT AUTO_INCREMENT PRIMARY KEY,
