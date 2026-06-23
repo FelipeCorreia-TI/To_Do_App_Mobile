@@ -1,5 +1,8 @@
-create table usuarios(
-	id_user int auto_increment primary key,
-    email varchar(100) not null UNIQUE,
-    senha varchar(50) not null
+
+CREATE TABLE usuarios (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    senha VARCHAR(255) NOT NULL
 );
+
+
