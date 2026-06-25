@@ -434,4 +434,4 @@ Banco de Dados MySQL
 
 **Felipe** e **Lucas**
 
-Projeto desenvolvido para fins acadêmicos na disciplina de Desenvolvimento Mobile.
+Projeto desenvolvido para fins acadêmicos na disciplina de Desenvolvimento Mobile e Back-End.
